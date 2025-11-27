@@ -2,25 +2,25 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Load JSON keys file from GitHub
+    const json = await fetch(env.KEYS_URL).then(r => r.json());
+
     if (url.pathname === "/api/verify" && request.method === "POST") {
       const body = await request.json();
       const { key, hwid } = body;
 
-      const kv = env.KEYS; // use KV instead of DB
-      const stored = await kv.get(key, { type: "json" });
-
-      if (!stored) {
+      const entry = json.keys.find(k => k.key === key);
+      if (!entry) {
         return Response.json({ status: "invalid", message: "Key not found" });
       }
 
-      // First-time HWID bind
-      if (!stored.hwid) {
-        await kv.put(key, JSON.stringify({ hwid }));
+      if (!entry.hwid) {
+        entry.hwid = hwid;
+        await env.UPDATE(entry); // Cloudflare KV update
         return Response.json({ status: "valid", linked: true });
       }
 
-      // HWID mismatch
-      if (stored.hwid !== hwid) {
+      if (entry.hwid !== hwid) {
         return Response.json({ status: "invalid", message: "HWID mismatch" });
       }
 
@@ -29,4 +29,4 @@ export default {
 
     return new Response("Not found", { status: 404 });
   }
-};
+}
