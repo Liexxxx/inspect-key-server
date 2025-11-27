@@ -1,4 +1,4 @@
-name = "inspect-key-server"
+name = "inspectkeymanager"
 main = "worker.js"
 compatibility_date = "2024-11-10"
 
