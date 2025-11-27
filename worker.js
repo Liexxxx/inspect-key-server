@@ -6,66 +6,54 @@ export default {
       const body = await request.json();
       const { key, hwid } = body;
 
-      // Load keys.json from GitHub
-      const githubUrl = `https://raw.githubusercontent.com/${env.GH_REPO}/main/${env.GH_FILE}`;
-      const res = await fetch(githubUrl);
-      let keys = await res.json();
+      // 1. Try to load from KV
+      let keys = await env.KV.get("keys", { type: "json" });
 
-      if (!keys[key]) {
-        return json({ status: "invalid", message: "Key not found" });
+      // 2. If KV is empty → pull from GitHub and save to KV
+      if (!keys) {
+        const res = await fetch(env.KEYS_URL);
+        keys = await res.json();
+
+        // Save initial GitHub version into KV
+        await env.KV.put("keys", JSON.stringify(keys));
       }
 
-      // If HWID is empty -> link it AND save to GitHub
+      // 3. Check for key existence
+      if (!keys[key]) {
+        return new Response(JSON.stringify({
+          status: "invalid",
+          message: "Key not found"
+        }), { status: 200 });
+      }
+
+      // 4. Link HWID if empty
       if (!keys[key].hwid) {
         keys[key].hwid = hwid;
 
-        await updateGithubFile(env, keys);
+        // 🔥 Save updated HWID permanently
+        await env.KV.put("keys", JSON.stringify(keys));
 
-        return json({ status: "valid", linked: true });
+        return new Response(JSON.stringify({
+          status: "valid",
+          linked: true
+        }), { status: 200 });
       }
 
-      // HWID mismatch
+      // 5. Validate HWID
       if (keys[key].hwid !== hwid) {
-        return json({ status: "invalid", message: "HWID mismatch" });
+        return new Response(JSON.stringify({
+          status: "invalid",
+          message: "HWID mismatch"
+        }), { status: 200 });
       }
 
-      return json({ status: "valid", linked: true });
+      // All good
+      return new Response(JSON.stringify({
+        status: "valid",
+        linked: true
+      }), { status: 200 });
     }
 
     return new Response("Not found", { status: 404 });
   }
-}
-
-function json(obj) {
-  return new Response(JSON.stringify(obj), { status: 200 });
-}
-
-// 🔥 Write updated JSON back to GitHub
-async function updateGithubFile(env, keys) {
-  const apiUrl = `https://api.github.com/repos/${env.GH_REPO}/contents/${env.GH_FILE}`;
-
-  // First: get the file SHA
-  const getFile = await fetch(apiUrl, {
-    headers: {
-      "Authorization": `Bearer ${env.GH_TOKEN}`,
-      "Accept": "application/vnd.github+json"
-    }
-  });
-
-  const fileData = await getFile.json();
-  const sha = fileData.sha;
-
-  // Second: upload new content
-  await fetch(apiUrl, {
-    method: "PUT",
-    headers: {
-      "Authorization": `Bearer ${env.GH_TOKEN}`,
-      "Accept": "application/vnd.github+json"
-    },
-    body: JSON.stringify({
-      message: "Update HWID link",
-      content: btoa(JSON.stringify(keys, null, 2)),
-      sha: sha
-    })
-  });
 }
