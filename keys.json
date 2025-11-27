@@ -1,4 +1,6 @@
 {
-  "TESTKEY123": { "hwid": null },
-  "ABC999KEY": { "hwid": null }
+  "keys": [
+    { "key": "ABC123", "hwid": null },
+    { "key": "DEF456", "hwid": null }
+  ]
 }
