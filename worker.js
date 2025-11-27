@@ -6,10 +6,22 @@ export default {
       const body = await request.json();
       const { key, hwid } = body;
 
-      // Load keys.json from GitHub
-      const res = await fetch(env.KEYS_URL);
-      let keys = await res.json();
+      // Load keys from KV
+      let keysText = await env.KV.get("keys");
+      let keys;
 
+      if (!keysText) {
+        // First-time load from GitHub if KV is empty
+        const res = await fetch(env.KEYS_URL);
+        keys = await res.json();
+
+        // Save copy into KV so we can write changes later
+        await env.KV.put("keys", JSON.stringify(keys));
+      } else {
+        keys = JSON.parse(keysText);
+      }
+
+      // Check if key exists
       if (!keys[key]) {
         return new Response(JSON.stringify({
           status: "invalid",
@@ -17,10 +29,12 @@ export default {
         }), { status: 200 });
       }
 
-      // Link HWID if empty
-      if (!keys[key].hwid) {
+      // ----- HWID LINKING -----
+      if (!keys[key].hwid || keys[key].hwid === "") {
+        // Link this PC's HWID
         keys[key].hwid = hwid;
 
+        // SAVE BACK TO KV (this is the part you were missing!)
         await env.KV.put("keys", JSON.stringify(keys));
 
         return new Response(JSON.stringify({
@@ -29,7 +43,7 @@ export default {
         }), { status: 200 });
       }
 
-      // Validate HWID
+      // ----- HWID CHECK -----
       if (keys[key].hwid !== hwid) {
         return new Response(JSON.stringify({
           status: "invalid",
@@ -37,6 +51,7 @@ export default {
         }), { status: 200 });
       }
 
+      // HWID matches
       return new Response(JSON.stringify({
         status: "valid",
         linked: true
