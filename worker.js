@@ -1,24 +1,3 @@
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/api/verify" && request.method === "POST") {
-      const body = await request.json();
-      const { key, hwid } = body;
-
-      const id = env.LICENSE_DO.idFromName("license-storage");
-      const stub = env.LICENSE_DO.get(id);
-
-      return await stub.fetch("https://internal/verify", {
-        method: "POST",
-        body: JSON.stringify({ key, hwid })
-      });
-    }
-
-    return new Response("Not found", { status: 404 });
-  }
-}
-
 export class LicenseObject {
   constructor(state, env) {
     this.state = state;
@@ -31,42 +10,46 @@ export class LicenseObject {
 
     if (!licenses) {
       const res = await fetch(this.env.KEYS_URL);
-      licenses = await res.json();
+      const json = await res.json();
+      licenses = json.keys;
       await this.state.storage.put("licenses", licenses);
     }
-
-    return licenses;
   }
 
   async fetch(request) {
     await this.initialized;
-
     const { key, hwid } = await request.json();
-
     let licenses = await this.state.storage.get("licenses");
-    const entry = licenses[key];
 
-    if (!entry) {
-      return json({ status: "invalid", message: "Key not found" });
+    if (!licenses[key]) {
+      return new Response(JSON.stringify({ success: false, error: "Invalid key" }), { status: 400 });
     }
 
-    if (!entry.hwid) {
-      entry.hwid = hwid;
+    if (licenses[key].hwid === "") {
+      licenses[key].hwid = hwid;
+      licenses[key].status = "locked";
       await this.state.storage.put("licenses", licenses);
-      return json({ status: "valid", linked: true });
+      return new Response(JSON.stringify({ success: true, status: "hwid_locked" }));
     }
 
-    if (entry.hwid !== hwid) {
-      return json({ status: "invalid", message: "HWID mismatch" });
+    if (licenses[key].hwid !== hwid) {
+      return new Response(JSON.stringify({ success: false, error: "HWID mismatch" }), { status: 403 });
     }
 
-    return json({ status: "valid", linked: true });
+    return new Response(JSON.stringify({ success: true, status: "valid" }));
   }
 }
 
-function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
-}
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/verify" && request.method === "POST") {
+      const id = env.LICENSE_DO.idFromName("license-storage");
+      const stub = env.LICENSE_DO.get(id);
+      return await stub.fetch("https://do", { method: "POST", body: request.body });
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+};
