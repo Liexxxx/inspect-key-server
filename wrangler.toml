@@ -8,3 +8,12 @@ KEYS_URL = "https://raw.githubusercontent.com/Liexxxx/inspect-key-server/main/ke
 [kv_namespaces]
 binding = "KV"
 id = "dab50c7443164864bebe4de8f1902d14"
+
+[[durable_objects.bindings]]
+name = "LICENSE_DO"
+class_name = "LicenseObject"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["LicenseObject"]
+
